@@ -700,10 +700,9 @@ input[type="file"]{display:none}
 <a id="download-link" style="display:none"></a>
 <script type="module">const PDFLib = window.PDFLib;
 const JSZip = window.JSZip;
+let pdfjs;
 const pdfjsSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs";
 const workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
-let pdfjs;
-try { pdfjs = await import(pdfjsSrc); pdfjs.GlobalWorkerOptions.workerSrc = workerSrc; } catch(e) { console.warn("pdf.js load failed:", e); }
 
 const TOOLS = {
   merge:{title:"Merge PDF",desc:"Gabungkan berbilang PDF menjadi satu dokumen"},
@@ -1776,6 +1775,10 @@ const App = {
 
 window.App = App;
 App.init();
+// Load pdf.js async — does NOT block App global availability
+(async () => {
+  try { pdfjs = await import(pdfjsSrc); pdfjs.GlobalWorkerOptions.workerSrc = workerSrc; } catch(e) { console.warn("pdf.js load failed:", e); }
+})();
 </script>
 </body>
 </html>
