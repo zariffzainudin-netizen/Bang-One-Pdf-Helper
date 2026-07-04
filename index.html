@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bang One Pdf Helper</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -779,7 +779,8 @@ const App = {
     const icons = {success:"check-circle", error:"alert-circle", info:"info"};
     const toast = document.createElement("div");
     toast.className = "toast " + type;
-    toast.innerHTML = '<i data-lucide="' + (icons[type]||"info") + '" style="width:18px;height:18px"></i><span class="toast-msg">' + msg + "</span>";
+    toast.innerHTML = '<i data-lucide="' + (icons[type]||"info") + '" style="width:18px;height:18px"></i><span class="toast-msg"></span>';
+    toast.querySelector(".toast-msg").textContent = msg;
     container.appendChild(toast);
     lucide.createIcons();
     setTimeout(() => { toast.classList.add("toast-out"); setTimeout(() => toast.remove(), 300); }, 3500);
@@ -793,11 +794,13 @@ const App = {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   },
 
+  esc(str) { return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); },
+
   showFileInfo(containerId, file) {
     const el = document.getElementById(containerId);
     if (!el) return;
     el.style.display = "block";
-    el.innerHTML = '<div class="file-info"><i data-lucide="file-text" class="file-info-icon"></i><div><div class="file-info-name">' + file.name + '</div><div class="file-info-meta">' + this.formatSize(file.size) + '</div></div></div>';
+    el.innerHTML = '<div class="file-info"><i data-lucide="file-text" class="file-info-icon"></i><div><div class="file-info-name">' + this.esc(file.name) + '</div><div class="file-info-meta">' + this.formatSize(file.size) + '</div></div></div>';
     lucide.createIcons();
   },
 
@@ -844,9 +847,12 @@ const App = {
     if (tool === "imageconvert") { s.mode="tojpg"; s.quality=85; }
     if (tool === "mergeimages") { s.layout="vertical"; s.cols=2; s.format="png"; s.quality=90; }
     if (tool === "pdfimage") { s.mode="pdftoimg"; s.format="png"; s.quality=90; }
+    s.file = null;
+    s.pdfDoc = null;
     delete this.state.results[tool];
     document.querySelectorAll(".tool-view").forEach(el => el.style.display = "none");
-    document.getElementById("tool-" + tool).style.display = "block";
+    const toolEl = document.getElementById("tool-" + tool);
+    if (toolEl) toolEl.style.display = "block";
     const sel = (id) => { const el = document.getElementById(id); if (el) el.style.display = "none"; };
     ["merge-files","merge-actions","split-file-info","split-body","rotate-file-info","rotate-body",
      "reorder-file-info","reorder-body","watermark-file-info","watermark-body","extract-file-info",
@@ -859,17 +865,14 @@ const App = {
     ["merge-success","split-success","rotate-success","reorder-success",
      "watermark-success","extract-success","pdfimage-success","numbering-success",
      "imgconvert-success","mergeimg-success"].forEach(sel);
-    const restorePdfDz = (prefix) => {
-      const d = document.getElementById(prefix + "-dropzone");
-      if (d) { d.className = "dropzone"; d.innerHTML = '<div class="dropzone-icon"><i data-lucide="file-text" style="width:48px;height:48px"></i></div><div class="dropzone-text">Drop PDF here or click to browse</div><div class="dropzone-hint">Supported: PDF (max 50MB)</div>'; }
-    };
-    restorePdfDz("merge"); restorePdfDz("split"); restorePdfDz("rotate");
-    restorePdfDz("reorder"); restorePdfDz("watermark"); restorePdfDz("extract");
-    restorePdfDz("numbering");
+    const pdfTools = ["merge","split","rotate","reorder","watermark","extract","numbering"];
+    const pdfDz = document.getElementById(tool + "-dropzone");
+    if (pdfTools.includes(tool) && pdfDz) {
+      pdfDz.className = "dropzone";
+      pdfDz.innerHTML = '<div class="dropzone-icon"><i data-lucide="file-text" style="width:48px;height:48px"></i></div><div class="dropzone-text">Drop PDF here or click to browse</div><div class="dropzone-hint">Supported: PDF (max 50MB)</div>';
+    }
     if (tool === "imageconvert" || tool === "mergeimages") {
-      let dz;
-      if (tool === "imageconvert") dz = document.getElementById("imgconvert-dropzone");
-      else dz = document.getElementById("mergeimg-dropzone");
+      const dz = document.getElementById(tool === "imageconvert" ? "imgconvert-dropzone" : "mergeimg-dropzone");
       if (dz) { dz.className = "dropzone";
         dz.innerHTML = '<div class="dropzone-icon"><i data-lucide="image" style="width:48px;height:48px"></i></div><div class="dropzone-text">Drop images here or click to browse</div><div class="dropzone-hint">Supported: PNG, JPG, JPEG, WebP, BMP</div>'; }
     }
@@ -905,7 +908,7 @@ const App = {
     files.forEach((f, i) => {
       const div = document.createElement("div");
       div.className = "file-info"; div.draggable = true;
-      div.innerHTML = '<i data-lucide="file-text" class="file-info-icon"></i><div><div class="file-info-name">' + f.name + '</div><div class="file-info-meta">' + this.formatSize(f.size) + '</div></div><button class="file-info-remove" onclick="App.removeMergeFile(' + i + ')"><i data-lucide="x" style="width:16px;height:16px"></i></button>';
+      div.innerHTML = '<i data-lucide="file-text" class="file-info-icon"></i><div><div class="file-info-name">' + this.esc(f.name) + '</div><div class="file-info-meta">' + this.formatSize(f.size) + '</div></div><button class="file-info-remove" onclick="App.removeMergeFile(' + i + ')"><i data-lucide="x" style="width:16px;height:16px"></i></button>';
       div.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", i); div.style.opacity = "0.4"; });
       div.addEventListener("dragend", () => { div.style.opacity = "1"; });
       div.addEventListener("dragover", e => e.preventDefault());
@@ -1076,7 +1079,6 @@ const App = {
 
   clickRotate(pageIdx) {
     this.state.rotate.rotations[pageIdx] = (this.state.rotate.rotations[pageIdx] + 90) % 360;
-    if (this.state.rotate.rotations[pageIdx] === 0) this.state.rotate.rotations[pageIdx] = 0;
     const badge = document.getElementById("rotate-badge-" + pageIdx);
     if (badge) { badge.style.display = this.state.rotate.rotations[pageIdx] ? "block" : "none"; badge.textContent = this.state.rotate.rotations[pageIdx] + "\u00b0"; }
   },
@@ -1084,8 +1086,8 @@ const App = {
   resetRotations() {
     const r = this.state.rotate;
     r.rotations = new Array(r.totalPages).fill(0);
-    document.querySelectorAll("#rotate-thumb-grid .thumb-card").forEach((_, i) => {
-      const badge = document.getElementById("rotate-badge-" + i);
+    document.querySelectorAll("#rotate-thumb-grid .thumb-card").forEach(card => {
+      const badge = document.getElementById("rotate-badge-" + card.dataset.page);
       if (badge) badge.style.display = "none";
     });
   },
@@ -1426,7 +1428,7 @@ const App = {
       const card = document.createElement("div");
       card.className = "image-card"; card.draggable = true;
       const url = URL.createObjectURL(f);
-      card.innerHTML = '<img src="' + url + '" alt="' + f.name + '"><div class="img-label">' + f.name + '</div><button class="img-remove" onclick="App.removeImgToPdf(' + i + ')">\u2715</button>';
+      card.innerHTML = '<img src="' + url + '" alt="' + this.esc(f.name) + '"><div class="img-label">' + this.esc(f.name) + '</div><button class="img-remove" onclick="App.removeImgToPdf(' + i + ')">\u2715</button>';
       card.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", i); card.classList.add("dragging"); });
       card.addEventListener("dragend", () => card.classList.remove("dragging"));
       card.addEventListener("dragover", e => { e.preventDefault(); card.classList.add("drag-over"); });
@@ -1604,7 +1606,7 @@ const App = {
     files.forEach((f, i) => {
       const card = document.createElement("div"); card.className = "image-card";
       const url = URL.createObjectURL(f);
-      card.innerHTML = '<img src="' + url + '" alt="' + f.name + '"><div class="img-label">' + f.name + '</div><button class="img-remove" onclick="App.removeImgConvertFile(' + i + ')">\u2715</button>';
+      card.innerHTML = '<img src="' + url + '" alt="' + this.esc(f.name) + '"><div class="img-label">' + this.esc(f.name) + '</div><button class="img-remove" onclick="App.removeImgConvertFile(' + i + ')">\u2715</button>';
       grid.appendChild(card);
     });
     container.appendChild(grid);
@@ -1691,7 +1693,7 @@ const App = {
       const card = document.createElement("div");
       card.className = "image-card"; card.draggable = true;
       const url = URL.createObjectURL(f);
-      card.innerHTML = '<img src="' + url + '" alt="' + f.name + '"><div class="img-label">' + (pos+1) + ". " + f.name + '</div><button class="img-remove" onclick="App.removeMergeImage(' + fileIdx + ')">\u2715</button>';
+      card.innerHTML = '<img src="' + url + '" alt="' + this.esc(f.name) + '"><div class="img-label">' + (pos+1) + ". " + this.esc(f.name) + '</div><button class="img-remove" onclick="App.removeMergeImage(' + fileIdx + ')">\u2715</button>';
       card.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", pos); card.classList.add("dragging"); });
       card.addEventListener("dragend", () => card.classList.remove("dragging"));
       card.addEventListener("dragover", e => { e.preventDefault(); card.classList.add("drag-over"); });
@@ -1772,6 +1774,7 @@ const App = {
   }
 };
 
+window.App = App;
 App.init();
 </script>
 </body>
