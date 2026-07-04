@@ -197,13 +197,17 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .fade-in{animation:fadeIn 300ms ease-out}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 input[type="file"]{display:none}
-/* Edit PDF overlay */
-.edit-element{position:absolute;cursor:move;border:2px solid transparent;transition:border-color var(--transition);min-width:20px;min-height:20px;z-index:10}
-.edit-element:hover,.edit-element.selected{border-color:var(--accent)}
-.edit-element .ee-text{font-family:'Inter',sans-serif;font-weight:600;white-space:nowrap;pointer-events:none;user-select:none}
-.edit-element .ee-rect{width:100%;height:100%;pointer-events:none;border-radius:4px}
-.edit-element .ee-handle{position:absolute;bottom:-6px;right:-6px;width:12px;height:12px;background:var(--accent);border-radius:50%;cursor:se-resize;display:none}
-.edit-element.selected .ee-handle{display:block}
+/* Element overlays (Edit PDF & Fill & Sign) */
+.edit-element,.fillsign-element{position:absolute;cursor:move;border:2px solid transparent;transition:border-color var(--transition);min-width:20px;min-height:20px;z-index:10}
+.edit-element:hover,.edit-element.selected,.fillsign-element:hover,.fillsign-element.selected{border-color:var(--accent)}
+.edit-element .ee-text,.fillsign-element .fs-text{font-family:'Inter',sans-serif;font-weight:600;white-space:nowrap;pointer-events:none;user-select:none}
+.edit-element .ee-rect,.fillsign-element .fs-rect{width:100%;height:100%;pointer-events:none;border-radius:4px}
+.edit-element .ee-handle,.fillsign-element .fs-handle{position:absolute;bottom:-6px;right:-6px;width:12px;height:12px;background:var(--accent);border-radius:50%;cursor:se-resize;display:none}
+.edit-element.selected .ee-handle,.fillsign-element.selected .fs-handle{display:block}
+.edit-element.detected,.fillsign-element.detected{border-color:#F59E0B;background:rgba(245,158,11,0.08)}
+.edit-element.detected .ee-text,.fillsign-element.detected .fs-text{color:#F59E0B!important}
+.edit-element.deleted,.fillsign-element.deleted{opacity:0.3;text-decoration:line-through}
+.fillsign-element .fs-signature{width:100%;height:100%;object-fit:contain;pointer-events:none}
 
 /* Signature pad */
 #sign-pad-canvas{touch-action:none}
@@ -797,33 +801,65 @@ input[type="file"]{display:none}
   <input id="fillsign-input" type="file" accept=".pdf" onchange="App.handleFillSignFile(this.files)">
   <div id="fillsign-file-info"></div>
   <div id="fillsign-body" style="display:none">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px">
+    <div style="display:flex;align-items:center;gap:8px;margin:12px 0;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary active" data-fillsign-tool="select" onclick="App.setFillSignTool('select',this)"><i data-lucide="mouse-pointer-2" style="width:14px;height:14px"></i>Select</button>
+      <button class="btn btn-sm btn-secondary" data-fillsign-tool="text" onclick="App.setFillSignTool('text',this)"><i data-lucide="type" style="width:14px;height:14px"></i>Add Text</button>
+      <button class="btn btn-sm btn-secondary" data-fillsign-tool="signature" onclick="App.setFillSignTool('signature',this)"><i data-lucide="pen" style="width:14px;height:14px"></i>Add Signature</button>
+      <button class="btn btn-sm btn-secondary" onclick="App.deleteFillSignElement()"><i data-lucide="trash-2" style="width:14px;height:14px"></i>Delete</button>
+      <span style="flex:1"></span>
+      <button class="btn btn-sm btn-secondary" onclick="App.prevFillSignPage()"><i data-lucide="chevron-left" style="width:14px;height:14px"></i></button>
+      <span style="font-size:13px;color:var(--text2)" id="fillsign-page-info">Page 1 / 1</span>
+      <button class="btn btn-sm btn-secondary" onclick="App.nextFillSignPage()"><i data-lucide="chevron-right" style="width:14px;height:14px"></i></button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 280px;gap:16px">
       <div>
-        <div class="config-panel">
-          <div class="config-label-full">Form Fields <span id="fillsign-field-count" style="font-weight:400;color:var(--text3)">(0 detected)</span></div>
-          <div id="fillsign-fields-list" style="max-height:320px;overflow-y:auto;margin-top:8px">
-            <div style="font-size:13px;color:var(--text3);padding:8px 0">No form fields detected in this PDF.</div>
+        <div class="preview-container" style="min-height:400px;position:relative;overflow:auto">
+          <div class="preview-label">Page <span id="fillsign-current-page-label">1</span></div>
+          <div style="position:relative;min-height:400px;display:flex;align-items:center;justify-content:center;padding:12px">
+            <div id="fillsign-canvas-layer" style="position:relative;display:inline-block"></div>
           </div>
-        </div>
-        <div class="config-panel" style="margin-top:8px">
-          <div class="config-label-full">Signature</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <button class="btn btn-sm btn-secondary" onclick="App.openSignPad()"><i data-lucide="pen" style="width:14px;height:14px"></i>Draw Signature</button>
-            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('fillsign-sign-img-input').click()"><i data-lucide="upload" style="width:14px;height:14px"></i>Upload Image</button>
-            <input id="fillsign-sign-img-input" type="file" accept="image/*" onchange="App.handleSignImage(this.files)" style="display:none">
-          </div>
-          <div id="fillsign-signatures" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
-        </div>
-        <div class="btn-group">
-          <button class="btn btn-primary" onclick="App.runFillSign()"><i data-lucide="file-signature" style="width:16px;height:16px"></i>Apply &amp; Download</button>
-          <button class="btn btn-ghost" onclick="App.resetTool('fillsign')">Start Over</button>
         </div>
       </div>
       <div>
-        <div class="config-label-full" style="margin-bottom:4px">Preview</div>
-        <div class="preview-container" id="fillsign-preview">
-          <div class="preview-label">Preview</div>
-          <div id="fillsign-preview-inner" style="display:flex;align-items:center;justify-content:center;min-height:300px;color:var(--text3);font-size:13px">Upload a PDF to see fields</div>
+        <div class="config-panel" id="fillsign-element-props" style="display:none">
+          <div class="config-label-full">Element Properties</div>
+          <div id="fillsign-no-selection" style="font-size:13px;color:var(--text3)">Select an element to edit</div>
+          <div id="fillsign-text-props" style="display:none">
+            <div class="config-row" style="flex-direction:column;align-items:stretch">
+              <span class="config-label-full">Text Content</span>
+              <input type="text" id="fillsign-text-content" oninput="App.updateFillSignElementProp('content',this.value)">
+            </div>
+            <div class="config-row">
+              <span class="config-label">Font Size</span>
+              <div class="config-slider"><input type="range" id="fillsign-fontsize" min="8" max="96" value="20" oninput="App.updateFillSignElementProp('fontSize',Number(this.value))"><span class="config-slider-value" id="fillsign-fontsize-val">20</span></div>
+            </div>
+            <div class="config-row">
+              <span class="config-label">Color</span>
+              <input type="color" id="fillsign-text-color" value="#000000" onchange="App.updateFillSignElementProp('color',this.value)">
+            </div>
+          </div>
+          <div id="fillsign-signature-props" style="display:none">
+            <div style="font-size:13px;color:var(--text3)">Signature element selected. Drag to reposition.</div>
+          </div>
+        </div>
+        <div class="config-panel">
+          <div class="config-label-full">Form Fields <span id="fillsign-field-count" style="font-weight:400;color:var(--text3)">(0)</span></div>
+          <div id="fillsign-fields-list" style="max-height:200px;overflow-y:auto;margin-top:8px">
+            <div style="font-size:13px;color:var(--text3);padding:8px 0">No form fields detected in this PDF.</div>
+          </div>
+        </div>
+        <div class="config-panel">
+          <div class="config-label-full">Saved Signatures</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+            <button class="btn btn-sm btn-secondary" onclick="App.openSignPad()"><i data-lucide="pen" style="width:14px;height:14px"></i>Draw</button>
+            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('fillsign-sign-img-input').click()"><i data-lucide="upload" style="width:14px;height:14px"></i>Upload</button>
+            <input id="fillsign-sign-img-input" type="file" accept="image/*" onchange="App.handleSignImage(this.files)" style="display:none">
+          </div>
+          <div id="fillsign-signatures" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><div style="font-size:12px;color:var(--text3)">No signatures yet</div></div>
+        </div>
+        <div class="btn-group" style="margin-top:8px">
+          <button class="btn btn-primary" onclick="App.runFillSign()"><i data-lucide="file-signature" style="width:16px;height:16px"></i>Apply &amp; Download</button>
+          <button class="btn btn-ghost" onclick="App.resetTool('fillsign')">Start Over</button>
         </div>
       </div>
     </div>
@@ -892,8 +928,8 @@ const App = {
     pdfimage:{file:null,mode:"pdftoimg",images:[],pdfDoc:null,totalPages:0,format:"png",quality:90},
     imageconvert:{files:[],mode:"tojpg",quality:85},
     mergeimages:{files:[],order:[],layout:"vertical",cols:2,format:"png",quality:90},
-    editpdf:{file:null,pdfDoc:null,pdfJsDoc:null,totalPages:0,currentPage:1,elements:[],selectedEl:null,activeTool:"select"},
-    fillsign:{file:null,pdfDoc:null,formFields:[],values:{},signatures:[],signPadOpen:false}
+    editpdf:{file:null,pdfDoc:null,pdfJsDoc:null,totalPages:0,currentPage:1,elements:[],selectedEl:-1,activeTool:"select",detectedTexts:[]},
+    fillsign:{file:null,pdfDoc:null,pdfJsDoc:null,totalPages:0,currentPage:1,elements:[],selectedEl:-1,activeTool:"select",formFields:[],values:{},savedSignatures:[],signPadOpen:false}
   },  async init() {
     lucide.createIcons();
     document.addEventListener("keydown", e => { if (e.key === "Escape") this.resetTool(this.state.currentTool); });
@@ -1942,18 +1978,18 @@ const App = {
     if (!f.name.toLowerCase().endsWith(".pdf")) { this.showToast("Not a PDF file", "error"); return; }
     if (f.size > 50 * 1024 * 1024) { this.showToast("File exceeds 50MB", "error"); return; }
     const s = this.state.editpdf;
-    s.file = f; s.elements = []; s.selectedEl = null; s.currentPage = 1;
+    s.file = f; s.elements = []; s.selectedEl = -1; s.currentPage = 1; s.detectedTexts = [];
     this.showFileInfo("editpdf-file-info", f);
     const dz = document.getElementById("editpdf-dropzone");
     dz.className = "dropzone has-file";
-    dz.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);font-size:13px">PDF uploaded. Click pages to add annotations.</div>';
+    dz.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);font-size:13px">PDF uploaded. Existing text is shown in amber; delete, edit, or add new elements.</div>';
     document.getElementById("editpdf-body").style.display = "block";
     (async () => {
       s.pdfDoc = await this.loadPdfDoc(f);
       const pdfJsDoc = await this.loadPdfJsDoc(f);
       s.pdfJsDoc = pdfJsDoc;
       s.totalPages = pdfJsDoc ? pdfJsDoc.numPages : 0;
-      this.loadEditPdfPage();
+      await this.loadEditPdfPage();
     })();
   },
 
@@ -1971,7 +2007,24 @@ const App = {
     const ctx = canvas.getContext("2d");
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
     canvas.style.maxWidth = "100%"; canvas.style.height = "auto";
+    canvas.style.display = "block";
     layer.appendChild(canvas);
+    // Detect existing text on this page
+    const textContent = await page.getTextContent();
+    const ph = page.getViewport({ scale: 1 }).height;
+    // Store detected text as elements
+    s.detectedTexts = textContent.items.map(item => {
+      const tx = item.transform[4]; const ty = item.transform[5];
+      return {
+        type: "text", source: "detected", page: s.currentPage - 1,
+        x: tx * 0.6, y: (ph - ty) * 0.6,
+        width: item.width * 0.6, height: 20,
+        content: item.str, fontSize: Math.abs(item.transform[0]) * 0.6,
+        color: "#F59E0B", opacity: 100, deleted: false
+      };
+    });
+    // Only add detected texts on first load per page, keep user-added elements
+    // Merge: elements that are user-added stay, detected texts are added from s.detectedTexts on each page load
     this.renderEditElements();
   },
 
@@ -1984,43 +2037,69 @@ const App = {
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
-    s.elements.filter(el => el.page === s.currentPage - 1).forEach((el, i) => {
+    const pageIdx = s.currentPage - 1;
+    // Build flat list with source info: {entry, sourceArr, sourceIdx}
+    const items = [];
+    for (let i = 0; i < s.detectedTexts.length; i++) {
+      const d = s.detectedTexts[i];
+      if (d.page === pageIdx && !d.deleted) items.push({ entry: d, arr: s.detectedTexts, idx: i });
+    }
+    for (let i = 0; i < s.elements.length; i++) {
+      const e = s.elements[i];
+      if (e.page === pageIdx) items.push({ entry: e, arr: s.elements, idx: i });
+    }
+    items.forEach((item) => {
+      const { entry: el, arr, idx } = item;
       const div = document.createElement("div");
-      div.className = "edit-element" + (s.selectedEl === i ? " selected" : "");
-      const xPct = el.x / canvas.width * 100;
-      const yPct = el.y / canvas.height * 100;
-      const wPct = (el.width || 200) / canvas.width * 100;
-      const hPct = (el.height || 30) / canvas.height * 100;
+      const isDetected = arr === s.detectedTexts;
+      div.className = "edit-element" + (isDetected ? " detected" : "");
+      const xPct = (el.x || 0) / canvas.width * 100;
+      const yPct = (el.y || 0) / canvas.height * 100;
+      const wPct = Math.max((el.width || 200) / canvas.width * 100, 2);
+      const hPct = Math.max((el.height || 30) / canvas.height * 100, 2);
       div.style.left = xPct + "%"; div.style.top = yPct + "%";
       div.style.width = wPct + "%"; div.style.height = hPct + "%";
+      const fs = (el.fontSize || 24) / scaleX;
       if (el.type === "text") {
-        div.innerHTML = '<div class="ee-text" style="font-size:' + (el.fontSize || 24) / scaleX + 'px;color:' + (el.color||"#3B82F6") + '">' + this.esc(el.content || "Text") + '</div><div class="ee-handle"></div>';
+        const c = isDetected ? "#F59E0B" : (el.color || "#3B82F6");
+        div.innerHTML = '<div class="ee-text" style="font-size:' + fs + 'px;color:' + c + '">' + this.esc(el.content || "") + '</div><div class="ee-handle"></div>';
       } else {
         const c = el.color || "#000000";
         const o = (el.opacity || 40) / 100;
         div.innerHTML = '<div class="ee-rect" style="background:' + c + ";opacity:" + o + '"></div><div class="ee-handle"></div>';
       }
-      div.addEventListener("click", (e) => { e.stopPropagation(); this.selectEditElement(i); });
-      div.addEventListener("mousedown", (e) => {
-        if (e.target.closest(".ee-handle")) return;
-        const startX = e.clientX, startY = e.clientY;
-        const elX = el.x, elY = el.y;
-        const onMove = (ev) => { el.x = elX + (ev.clientX - startX) * scaleX; el.y = elY + (ev.clientY - startY) * scaleX; this.renderEditElements(); };
-        const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
-        document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
+      // Detect clicks on the overlay
+      div.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (isDetected) {
+          // Toggle delete for detected text
+          el.deleted = !el.deleted;
+          this.selectEditElement(-1);
+          this.showToast(el.deleted ? "Marked for redaction" : "Restored", "success");
+        } else {
+          this.selectEditElement(idx);
+        }
       });
+      // Drag for user-added elements only
+      if (!isDetected) {
+        div.addEventListener("mousedown", (e) => {
+          if (e.target.closest(".ee-handle")) return;
+          const startX = e.clientX, startY = e.clientY;
+          const elX = el.x, elY = el.y;
+          const onMove = (ev) => { el.x = elX + (ev.clientX - startX) * scaleX; el.y = elY + (ev.clientY - startY) * scaleX; this.renderEditElements(); };
+          const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+          document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
+        });
+      }
       layer.appendChild(div);
     });
-    // Click on canvas to deselect or add element
-    if (canvas) {
-      canvas.onclick = (e) => {
-        if (s.activeTool === "select") { this.selectEditElement(-1); return; }
-        const rect = canvas.getBoundingClientRect();
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleX;
-        this.addEditElement(s.activeTool, x, y);
-      };
-    }
+    canvas.onclick = (e) => {
+      if (s.activeTool === "select") { this.selectEditElement(-1); return; }
+      const r = canvas.getBoundingClientRect();
+      const x = (e.clientX - r.left) * scaleX;
+      const y = (e.clientY - r.top) * scaleX;
+      this.addEditElement(s.activeTool, x, y);
+    };
   },
 
   setEditTool(tool, btn) {
@@ -2031,7 +2110,7 @@ const App = {
 
   addEditElement(type, x, y) {
     const s = this.state.editpdf;
-    const el = { type, page: s.currentPage - 1, x, y, width: 200, height: 30, color: "#3B82F6", fontSize: 24, content: type === "text" ? "Text" : "", opacity: 40 };
+    const el = { type, source: "user", page: s.currentPage - 1, x, y, width: 200, height: 30, color: type === "text" ? "#3B82F6" : "#000000", fontSize: 24, content: type === "text" ? "Text" : "", opacity: 40 };
     s.elements.push(el);
     this.selectEditElement(s.elements.length - 1);
   },
@@ -2097,10 +2176,23 @@ const App = {
     try {
       const doc = s.pdfDoc;
       const pages = doc.getPages();
+      // Redact detected texts marked as deleted (white rectangle)
+      for (const dt of s.detectedTexts) {
+        if (!dt.deleted) continue;
+        const page = pages[dt.page];
+        if (!page) continue;
+        const { height: ph } = page.getSize();
+        page.drawRectangle({
+          x: dt.x / 0.6, y: ph - dt.y / 0.6 - (dt.height || 20) / 0.6,
+          width: Math.max((dt.width || 200) / 0.6, 10), height: Math.max((dt.height || 20) / 0.6, 10),
+          color: PDFLib.rgb(1, 1, 1), opacity: 1
+        });
+      }
+      // Draw user-added elements
       for (const el of s.elements) {
         const page = pages[el.page];
         if (!page) continue;
-        const { width: pw, height: ph } = page.getSize();
+        const { height: ph } = page.getSize();
         if (el.type === "text") {
           const color = el.color || "#3B82F6";
           page.drawText(el.content || "", {
@@ -2123,7 +2215,8 @@ const App = {
       this.state.results.editpdf = { blob, filename: "edited.pdf" };
       document.getElementById("editpdf-processing").style.display = "none";
       document.getElementById("editpdf-success").style.display = "flex";
-      document.getElementById("editpdf-success-msg").textContent = s.elements.length + " annotation(s) applied (" + this.formatSize(blob.size) + ")";
+      const redacted = s.detectedTexts.filter(d => d.deleted).length;
+      document.getElementById("editpdf-success-msg").textContent = s.elements.length + " annotation(s) added" + (redacted ? ", " + redacted + " text(s) redacted" : "") + " (" + this.formatSize(blob.size) + ")";
     } catch(e) { this.showToast("Edit failed: " + e.message, "error"); document.getElementById("editpdf-processing").style.display = "none"; document.getElementById("editpdf-body").style.display = "block"; }
   },
 
@@ -2133,11 +2226,11 @@ const App = {
     if (!f.name.toLowerCase().endsWith(".pdf")) { this.showToast("Not a PDF file", "error"); return; }
     if (f.size > 50 * 1024 * 1024) { this.showToast("File exceeds 50MB", "error"); return; }
     const s = this.state.fillsign;
-    s.file = f; s.formFields = []; s.values = {}; s.signatures = [];
+    s.file = f; s.elements = []; s.selectedEl = -1; s.currentPage = 1; s.formFields = []; s.values = {};
     this.showFileInfo("fillsign-file-info", f);
     const dz = document.getElementById("fillsign-dropzone");
     dz.className = "dropzone has-file";
-    dz.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);font-size:13px">PDF uploaded. Fill fields below.</div>';
+    dz.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);font-size:13px">PDF uploaded. Click to add text or place signature.</div>';
     document.getElementById("fillsign-body").style.display = "block";
     (async () => {
       try {
@@ -2146,17 +2239,153 @@ const App = {
         this.detectFormFields();
       } catch(e) { this.showToast("Could not load form: " + e.message, "error"); }
       const pdfJsDoc = await this.loadPdfJsDoc(f);
-      if (pdfJsDoc) {
-        const page = await pdfJsDoc.getPage(1);
-        const vp = page.getViewport({ scale: 0.5 });
-        const canvas = document.createElement("canvas");
-        canvas.width = vp.width; canvas.height = vp.height;
-        const ctx = canvas.getContext("2d");
-        await page.render({ canvasContext: ctx, viewport: vp }).promise;
-        const inner = document.getElementById("fillsign-preview-inner");
-        inner.innerHTML = ""; inner.appendChild(canvas);
-      }
+      s.pdfJsDoc = pdfJsDoc;
+      s.totalPages = pdfJsDoc ? pdfJsDoc.numPages : 0;
+      await this.loadFillSignPage();
     })();
+  },
+
+  async loadFillSignPage() {
+    const s = this.state.fillsign;
+    const layer = document.getElementById("fillsign-canvas-layer");
+    layer.innerHTML = "";
+    document.getElementById("fillsign-page-info").textContent = "Page " + s.currentPage + " / " + s.totalPages;
+    document.getElementById("fillsign-current-page-label").textContent = s.currentPage;
+    if (!s.pdfJsDoc) return;
+    const page = await s.pdfJsDoc.getPage(s.currentPage);
+    const vp = page.getViewport({ scale: 0.6 });
+    const canvas = document.createElement("canvas");
+    canvas.width = vp.width; canvas.height = vp.height;
+    const ctx = canvas.getContext("2d");
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    canvas.style.maxWidth = "100%"; canvas.style.height = "auto";
+    canvas.style.display = "block";
+    layer.appendChild(canvas);
+    this.renderFillSignElements();
+  },
+
+  renderFillSignElements() {
+    const s = this.state.fillsign;
+    const layer = document.getElementById("fillsign-canvas-layer");
+    const existing = layer.querySelectorAll(".fillsign-element");
+    existing.forEach(el => el.remove());
+    const canvas = layer.querySelector("canvas");
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const pageIdx = s.currentPage - 1;
+    s.elements.filter(e => e.page === pageIdx).forEach((el, i) => {
+      const div = document.createElement("div");
+      div.className = "fillsign-element" + (s.selectedEl === i ? " selected" : "");
+      const xPct = (el.x || 20) / canvas.width * 100;
+      const yPct = (el.y || 20) / canvas.height * 100;
+      const wPct = Math.max((el.width || 150) / canvas.width * 100, 2);
+      const hPct = Math.max((el.height || 30) / canvas.height * 100, 2);
+      div.style.left = xPct + "%"; div.style.top = yPct + "%";
+      div.style.width = wPct + "%"; div.style.height = hPct + "%";
+      if (el.type === "text") {
+        const fs = (el.fontSize || 20) / scaleX;
+        div.innerHTML = '<div class="fs-text" style="font-size:' + fs + 'px;color:' + (el.color || "#000") + '">' + this.esc(el.content || "Text") + '</div><div class="fs-handle"></div>';
+      } else if (el.type === "signature") {
+        div.innerHTML = '<img class="fs-signature" src="' + el.dataUrl + '" alt="signature"><div class="fs-handle"></div>';
+      }
+      div.addEventListener("click", (e) => { e.stopPropagation(); this.selectFillSignElement(i); });
+      div.addEventListener("mousedown", (e) => {
+        if (e.target.closest(".fs-handle")) return;
+        const startX = e.clientX, startY = e.clientY;
+        const elX = el.x, elY = el.y;
+        const onMove = (ev) => { el.x = elX + (ev.clientX - startX) * scaleX; el.y = elY + (ev.clientY - startY) * scaleX; this.renderFillSignElements(); };
+        const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+        document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
+      });
+      layer.appendChild(div);
+    });
+    canvas.onclick = (e) => {
+      const r = canvas.getBoundingClientRect();
+      const x = (e.clientX - r.left) * scaleX;
+      const y = (e.clientY - r.top) * scaleX;
+      if (s.activeTool === "text") {
+        this.addFillSignElement("text", x, y);
+      } else if (s.activeTool === "signature") {
+        if (!s.savedSignatures.length) { this.showToast("Draw or upload a signature first", "error"); return; }
+        // Place the most recently saved signature
+        const lastSig = s.savedSignatures[s.savedSignatures.length - 1];
+        this.addFillSignElement("signature", x, y, lastSig.dataUrl);
+      } else {
+        this.selectFillSignElement(-1);
+      }
+    };
+  },
+
+  setFillSignTool(tool, btn) {
+    this.state.fillsign.activeTool = tool;
+    document.querySelectorAll('[data-fillsign-tool]').forEach(b => b.classList.remove("active"));
+    if (btn) btn.classList.add("active");
+  },
+
+  addFillSignElement(type, x, y, dataUrl) {
+    const s = this.state.fillsign;
+    const el = { type, source: "user", page: s.currentPage - 1, x, y, width: type === "signature" ? 150 : 200, height: type === "signature" ? 50 : 30 };
+    if (type === "text") {
+      el.content = "Text"; el.fontSize = 20; el.color = "#000000";
+    } else {
+      el.dataUrl = dataUrl;
+    }
+    s.elements.push(el);
+    this.selectFillSignElement(s.elements.length - 1);
+  },
+
+  selectFillSignElement(index) {
+    const s = this.state.fillsign;
+    s.selectedEl = index;
+    const propsPanel = document.getElementById("fillsign-element-props");
+    document.getElementById("fillsign-no-selection").style.display = index >= 0 ? "none" : "block";
+    document.getElementById("fillsign-text-props").style.display = "none";
+    document.getElementById("fillsign-signature-props").style.display = "none";
+    if (index >= 0) {
+      propsPanel.style.display = "block";
+      const el = s.elements[index];
+      if (el.type === "text") {
+        document.getElementById("fillsign-no-selection").style.display = "none";
+        document.getElementById("fillsign-text-props").style.display = "block";
+        document.getElementById("fillsign-text-content").value = el.content || "";
+        document.getElementById("fillsign-fontsize").value = el.fontSize || 20;
+        document.getElementById("fillsign-fontsize-val").textContent = el.fontSize || 20;
+        document.getElementById("fillsign-text-color").value = el.color || "#000000";
+      } else {
+        document.getElementById("fillsign-no-selection").style.display = "none";
+        document.getElementById("fillsign-signature-props").style.display = "block";
+      }
+    } else {
+      propsPanel.style.display = "none";
+    }
+    this.renderFillSignElements();
+  },
+
+  updateFillSignElementProp(prop, value) {
+    const s = this.state.fillsign;
+    if (s.selectedEl < 0) return;
+    const el = s.elements[s.selectedEl];
+    el[prop] = value;
+    if (prop === "fontSize") document.getElementById("fillsign-fontsize-val").textContent = value;
+    this.renderFillSignElements();
+  },
+
+  deleteFillSignElement() {
+    const s = this.state.fillsign;
+    if (s.selectedEl < 0) return;
+    s.elements.splice(s.selectedEl, 1);
+    s.selectedEl = -1;
+    document.getElementById("fillsign-element-props").style.display = "none";
+    this.renderFillSignElements();
+  },
+
+  prevFillSignPage() {
+    if (this.state.fillsign.currentPage > 1) { this.state.fillsign.currentPage--; this.loadFillSignPage(); }
+  },
+
+  nextFillSignPage() {
+    if (this.state.fillsign.currentPage < this.state.fillsign.totalPages) { this.state.fillsign.currentPage++; this.loadFillSignPage(); }
   },
 
   detectFormFields() {
@@ -2170,44 +2399,42 @@ const App = {
         try { type = f.constructor.name.replace("PDF","").replace("Button","CheckBox").toLowerCase(); } catch(e) {}
         return { ref: f, name: f.getName(), type };
       });
-    } catch(e) {
-      // Fallback: some PDFs might not have proper AcroForm
-    }
+    } catch(e) {}
     this.renderFormFields();
   },
 
   renderFormFields() {
     const container = document.getElementById("fillsign-fields-list");
     const fields = this.state.fillsign.formFields;
-    document.getElementById("fillsign-field-count").textContent = "(" + fields.length + " detected)";
+    document.getElementById("fillsign-field-count").textContent = "(" + fields.length + ")";
     if (!fields.length) {
-      container.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:8px 0">No form fields detected. You can still add signatures.</div>';
+      container.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:8px 0">No form fields detected. Click "Add Text" on the page instead.</div>';
       return;
     }
     container.innerHTML = "";
     fields.forEach((f, i) => {
       const div = document.createElement("div");
-      div.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px";
+      div.style.cssText = "display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px";
       const label = document.createElement("span");
-      label.style.cssText = "flex:1;color:var(--text2);font-weight:500";
+      label.style.cssText = "flex:1;color:var(--text2);font-weight:500;font-size:12px";
       label.textContent = f.name || "Field " + (i+1);
       div.appendChild(label);
       if (f.type === "checkbox") {
         const cb = document.createElement("input");
         cb.type = "checkbox";
-        cb.style.cssText = "width:18px;height:18px;accent-color:var(--accent)";
+        cb.style.cssText = "width:16px;height:16px;accent-color:var(--accent)";
         cb.onchange = () => { this.state.fillsign.values[f.name] = cb.checked; };
         div.appendChild(cb);
       } else {
         const input = document.createElement("input");
         input.type = "text";
-        input.placeholder = "Enter value...";
-        input.style.cssText = "width:140px;padding:4px 8px;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text)";
+        input.placeholder = "Value...";
+        input.style.cssText = "width:110px;padding:3px 6px;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text)";
         input.oninput = () => { this.state.fillsign.values[f.name] = input.value; };
         div.appendChild(input);
       }
       const badge = document.createElement("span");
-      badge.style.cssText = "font-size:10px;color:var(--text3);text-transform:uppercase";
+      badge.style.cssText = "font-size:9px;color:var(--text3);text-transform:uppercase";
       badge.textContent = f.type;
       div.appendChild(badge);
       container.appendChild(div);
@@ -2224,7 +2451,6 @@ const App = {
     canvas.onmousemove = (e) => { if (!drawing) return; const r = canvas.getBoundingClientRect(); ctx.lineTo(e.clientX - r.left, e.clientY - r.top); ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.stroke(); };
     canvas.onmouseup = () => { drawing = false; };
     canvas.onmouseleave = () => { drawing = false; };
-    // Touch support
     canvas.ontouchstart = (e) => { e.preventDefault(); drawing = true; ctx.beginPath(); const t = e.touches[0]; const r = canvas.getBoundingClientRect(); ctx.moveTo(t.clientX - r.left, t.clientY - r.top); };
     canvas.ontouchmove = (e) => { e.preventDefault(); if (!drawing) return; const t = e.touches[0]; const r = canvas.getBoundingClientRect(); ctx.lineTo(t.clientX - r.left, t.clientY - r.top); ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.stroke(); };
     canvas.ontouchend = (e) => { e.preventDefault(); drawing = false; };
@@ -2243,9 +2469,10 @@ const App = {
     const canvas = document.getElementById("sign-pad-canvas");
     const dataUrl = canvas.toDataURL("image/png");
     const s = this.state.fillsign;
-    s.signatures.push({ dataUrl, page: 0, x: 100, y: 100, width: 150, height: 60 });
-    this.renderSignatures();
+    s.savedSignatures.push({ dataUrl });
+    this.renderSavedSignatures();
     this.closeSignPad();
+    this.showToast("Signature saved! Select 'Add Signature' then click on the page to place it.", "success");
   },
 
   handleSignImage(files) {
@@ -2253,29 +2480,35 @@ const App = {
     const reader = new FileReader();
     reader.onload = (e) => {
       const s = this.state.fillsign;
-      s.signatures.push({ dataUrl: e.target.result, page: 0, x: 100, y: 100, width: 150, height: 60 });
-      this.renderSignatures();
+      s.savedSignatures.push({ dataUrl: e.target.result });
+      this.renderSavedSignatures();
+      this.showToast("Signature saved! Select 'Add Signature' then click on the page to place it.", "success");
     };
     reader.readAsDataURL(f);
   },
 
-  renderSignatures() {
+  renderSavedSignatures() {
     const container = document.getElementById("fillsign-signatures");
-    const sigs = this.state.fillsign.signatures;
+    const sigs = this.state.fillsign.savedSignatures;
     container.innerHTML = "";
+    if (!sigs.length) {
+      container.innerHTML = '<div style="font-size:12px;color:var(--text3)">No signatures yet</div>';
+      return;
+    }
     sigs.forEach((sig, i) => {
       const div = document.createElement("div");
-      div.style.cssText = "position:relative;width:80px;height:40px;border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:pointer";
+      div.style.cssText = "position:relative;width:70px;height:36px;border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:pointer";
       div.innerHTML = '<img src="' + sig.dataUrl + '" style="width:100%;height:100%;object-fit:contain">';
-      div.onclick = () => { this.state.fillsign.signatures.splice(i, 1); this.renderSignatures(); };
+      div.title = "Click to remove";
+      div.onclick = () => { this.state.fillsign.savedSignatures.splice(i, 1); this.renderSavedSignatures(); };
       container.appendChild(div);
     });
-    if (sigs.length) { const hint = document.createElement("div"); hint.style.cssText = "font-size:11px;color:var(--text3);width:100%"; hint.textContent = "Click to remove"; container.appendChild(hint); }
   },
 
   async runFillSign() {
     const s = this.state.fillsign;
     if (!s.file || !s.pdfDoc) return;
+    if (!s.elements.length && !Object.keys(s.values).length) { this.showToast("Add text, signature, or fill a field first", "error"); return; }
     document.getElementById("fillsign-body").style.display = "none";
     document.getElementById("fillsign-processing").style.display = "flex";
     try {
@@ -2287,31 +2520,35 @@ const App = {
         const val = s.values[name];
         if (val === undefined || val === null) continue;
         try {
-          if (typeof val === "boolean") {
-            if (val) field.check();
-          } else if (typeof val === "string" && val.trim()) {
-            field.setText(val);
-          }
-        } catch(e) { /* skip fields that can't be set */ }
+          if (typeof val === "boolean") { if (val) field.check(); }
+          else if (typeof val === "string" && val.trim()) { field.setText(val); }
+        } catch(e) {}
       }
-      // Embed signatures
       const pages = doc.getPages();
-      for (const sig of s.signatures) {
-        const page = pages[sig.page] || pages[0];
+      for (const el of s.elements) {
+        const page = pages[el.page] || pages[0];
         if (!page) continue;
-        const { width, height } = page.getSize();
-        const imgBytes = await (await fetch(sig.dataUrl)).arrayBuffer();
-        const img = await doc.embedPng(imgBytes);
-        const iw = img.width, ih = img.height;
-        const dw = 120, dh = dw * ih / iw;
-        page.drawImage(img, { x: sig.x, y: height - sig.y - dh, width: dw, height: dh });
+        const { height: ph } = page.getSize();
+        if (el.type === "text") {
+          const c = el.color || "#000000";
+          page.drawText(el.content || "", {
+            x: el.x / 0.6, y: ph - el.y / 0.6, size: (el.fontSize || 20) / 0.6,
+            color: PDFLib.rgb(parseInt(c.slice(1,3),16)/255, parseInt(c.slice(3,5),16)/255, parseInt(c.slice(5,7),16)/255)
+          });
+        } else if (el.type === "signature") {
+          const imgBytes = await (await fetch(el.dataUrl)).arrayBuffer();
+          const img = await doc.embedPng(imgBytes);
+          const iw = img.width, ih = img.height;
+          const dw = 120, dh = dw * ih / iw;
+          page.drawImage(img, { x: el.x / 0.6, y: ph - el.y / 0.6 - dh, width: dw, height: dh });
+        }
       }
       const bytes = await doc.save();
       const blob = new Blob([bytes], { type: "application/pdf" });
       this.state.results.fillsign = { blob, filename: "filled_signed.pdf" };
       document.getElementById("fillsign-processing").style.display = "none";
       document.getElementById("fillsign-success").style.display = "flex";
-      document.getElementById("fillsign-success-msg").textContent = "Form completed with " + Object.keys(s.values).length + " field(s) and " + s.signatures.length + " signature(s) (" + this.formatSize(blob.size) + ")";
+      document.getElementById("fillsign-success-msg").textContent = "Completed with " + s.elements.length + " element(s) and " + Object.keys(s.values).length + " field value(s) (" + this.formatSize(blob.size) + ")";
     } catch(e) { this.showToast("Fill/Sign failed: " + e.message, "error"); document.getElementById("fillsign-processing").style.display = "none"; document.getElementById("fillsign-body").style.display = "block"; }
   }
 };
